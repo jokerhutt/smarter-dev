@@ -29,6 +29,9 @@ from smarter_dev.web.models import (
     ForumAgentResponse,
     ForumNotificationTopic,
     ForumUserSubscription,
+    Quest,
+    QuestProgress,
+    DailyQuest,
     Campaign,
     Challenge,
     ChallengeInput,
@@ -2592,6 +2595,69 @@ class ForumAgentOperations:
         except Exception as e:
             logger.error(f"Error syncing notification topics for agent {agent.id}: {e}")
             raise DatabaseOperationError(f"Failed to sync notification topics: {e}") from e
+
+
+
+class QuestOperations:
+    """Database operations for quest management system."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_quest_by_id(self, quest_id: UUID, guild_id: Optional[str] = None) -> Optional[Quest]:
+        try:
+            query = select(Quest).where(Quest.id == quest_id)
+            if guild_id is not None:
+                query = query.where(Quest.guild_id == guild_id)
+            result = await self.session.execute(query)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            raise DatabaseOperationError(f"Failed to get campaign: {e}") from e
+
+    async def create_quest(
+        self,
+        title: str,
+        description: str,
+        is_enabled: bool,
+        created_at: str,
+        updated_at: str,
+        points_value: int = 50,
+        max_completions_per_day: Optional[int] = None,
+        quest_type: str = "daily",
+        difficulty: str = "easy",
+
+    ) -> Quest:
+        try:
+            quest = Quest(
+                title=title,
+                description=description,
+                points_value=points_value,
+                max_completions_per_day=max_completions_per_day,
+                quest_type=quest_type,
+                difficulty=difficulty,
+                is_enabled=is_enabled,
+                created_at=created_at,
+                updated_at=updated_at
+            )
+            self.session.add(quest)
+            await self.session.commit()
+            await self.session.refresh(quest)
+            return quest
+
+        except IntegrityError as e:
+            await self.session.rollback()
+            if "uq_quests_guild_title" in str(e):
+                raise ConflictError(
+                    f"Quest with title '{title}' already exists"
+                ) from e
+            raise DatabaseOperationError(
+                f"Failed to create quest: {e}"
+            ) from e
+        except Exception as e:
+            await self.session.rollback()
+            raise DatabaseOperationError(
+                f"Failed to create quest: {e}"
+            ) from e
 
 
 class CampaignOperations:
