@@ -1466,14 +1466,15 @@ class ForumUserSubscription(Base):
         return f"<ForumUserSubscription(username='{self.username}', guild_id='{self.guild_id}', topics={len(self.subscribed_topics)})>"
 
 class Quest(Base):
-    """Reusable quest template.
+    """Reusable quest definition.
 
-    Defines what the quest is, how many points it gives, and any metadata.
-    Daily instances will reference this.
+    A quest defines *what* the user must do.
+    DailyQuest (or similar) defines *when* it is active.
     """
 
     __tablename__ = "quests"
 
+    # Identity
     id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True),
         primary_key=True,
@@ -1488,59 +1489,52 @@ class Quest(Base):
         doc="Discord guild (server) snowflake ID this quest belongs to",
     )
 
-    # Human-facing
+    # Human-facing content
     title: Mapped[str] = mapped_column(
         String(200),
         nullable=False,
-        doc="Quest title/name",
+        doc="Quest title",
     )
-    description: Mapped[str] = mapped_column(
+
+    prompt: Mapped[str] = mapped_column(
         Text,
         nullable=False,
-        default="",
-        doc="Quest description and how to complete it",
+        doc="Quest instructions / prompt shown to users",
     )
 
-    # Tuning
-    points_value: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=100,
-        doc="Base points awarded for completing this quest",
-    )
-    max_completions_per_day: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=1,
-        doc="How many times a user can complete this quest per day (usually 1)",
-    )
-
-    # Categorisation / difficulty knobs
     quest_type: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
         default="daily",
         doc="Quest type (daily, weekly, one_off, etc.)",
     )
-    difficulty: Mapped[Optional[str]] = mapped_column(
-        String(50),
+
+    # Execution / validation scripts
+    python_script: Mapped[Optional[str]] = mapped_column(
+        Text,
         nullable=True,
-        doc="Optional difficulty label (easy, medium, hard)",
+        doc="Reference Python solution or logic",
     )
 
-    is_enabled: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        index=True,
-        doc="Whether this quest can be picked for rotation",
+    input_generator_script: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        doc="Script to generate quest input (optional)",
     )
 
+    solution_validator_script: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+        doc="Script to validate user submissions",
+    )
+
+    # Audit
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
     )
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -1550,22 +1544,10 @@ class Quest(Base):
 
     __table_args__ = (
         Index("ix_quests_guild_id", "guild_id"),
-        Index("ix_quests_guild_enabled", "guild_id", "is_enabled"),
     )
 
-    def __init__(self, **kwargs):
-        now = datetime.now(timezone.utc)
-        kwargs.setdefault("created_at", now)
-        kwargs.setdefault("updated_at", now)
-        kwargs.setdefault("points_value", 100)
-        kwargs.setdefault("max_completions_per_day", 1)
-        kwargs.setdefault("is_enabled", True)
-        kwargs.setdefault("description", "")
-        super().__init__(**kwargs)
-
     def __repr__(self) -> str:
-        status = "enabled" if self.is_enabled else "disabled"
-        return f"<Quest(title='{self.title}', guild_id='{self.guild_id}', status='{status}')>"
+        return f"<Quest(title='{self.title}', guild_id='{self.guild_id}', type='{self.quest_type}')>"
 
 class DailyQuest(Base):
     """Quest instance active for a specific date in a guild.

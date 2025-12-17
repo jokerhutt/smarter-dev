@@ -38,27 +38,59 @@ def initialize_client (settings: Settings, default_timeout = 30) :
 
 
 @quests_group.child
-@lightbulb.command("event", "View current quest event/campaign information")
+@lightbulb.command("current", "View current quest information")
 @lightbulb.implements(lightbulb.SlashSubCommand)
 async def event_command(ctx: lightbulb.Context) -> None:
-    """Display current quest information."""
     try:
         await defer_ephemeral(ctx)
 
-        # Get guild ID
-        if ctx.guild_id is None:
+        guild_id = ctx.guild_id
+        if guild_id is None:
             await ctx.edit_last_response("This command can only be used in a server.")
             return
 
-        # Initialize API client
         initialize_client(settings)
 
-    except Exception as fatal_error:
-        logger.error(f"Fatal error in event command: {fatal_error}")
-        try:
-            await ctx.edit_last_response("A fatal error occurred. Please try again later.")
-        except Exception:
-            pass
+        response = await api_client.get(
+            f"/quests/daily/current?guild_id={guild_id}"
+        )
+
+        data = response.json()
+        quest = data["quest"]
+
+        embed = hikari.Embed(
+            title="🗓️ Daily Quest",
+            description=(
+                f"**{quest['title']}**\n\n"
+                f"{quest['prompt']}\n\n"
+                f"*{quest['hint']}*"
+            ),
+            color=0x27AE60,
+        )
+
+        embed.add_field(
+            name="Points",
+            value=str(quest.get("points_value", "?")),
+            inline=True,
+        )
+
+        embed.add_field(
+            name="Quest Type",
+            value=quest.get("quest_type", "daily"),
+            inline=True,
+        )
+
+        embed.set_footer(
+            text="View progress with /daily progress"
+        )
+
+        await ctx.edit_last_response(embed=embed)
+
+    except Exception as e:
+        logger.error(f"Error in /quests current: {e}")
+        await ctx.edit_last_response(
+            "Failed to load current quest. Please try again later."
+        )
 
 
 def load(bot: lightbulb.BotApp) -> None:

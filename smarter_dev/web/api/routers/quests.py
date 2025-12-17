@@ -7,93 +7,71 @@ Used by the Discord bot to check for pending announcements and mark challenges a
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Any
+from typing import Dict, Any
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
-
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from smarter_dev.shared.date_provider import get_date_provider
 
 from smarter_dev.shared.database import get_db_session
 from smarter_dev.web.api.dependencies import verify_api_key
 from smarter_dev.web.crud import (
-    CampaignOperations,
-    ChallengeInputOperations,
-    ChallengeSubmissionOperations,
     QuestOperations,
-    SquadOperations,
     DatabaseOperationError,
-    ScriptExecutionError,
 )
-from smarter_dev.web.models import Campaign
+from smarter_dev.web.models import Campaign, DailyQuest, Quest
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/quests", tags=["quests"])
 
+# TODO THIS IS JSUT A ROUTER
 
-@router.get("/{quest_id}")
-async def get_quest(
-    quest_id: UUID,
+
+@router.get("/daily/current")
+async def get_current_daily_quest(
+    guild_id: str = Query(..., description="Discord guild ID"),
     session: AsyncSession = Depends(get_db_session),
     api_key=Depends(verify_api_key),
 ) -> Dict[str, Dict[str, Any]]:
-    """Get a challenge with its campaign data.
+    date_provider = get_date_provider()
+    today = date_provider.today()
 
-    Args:
-        quest: UUID of the quest to retrieve
-
-    Returns:
-        Quest data with quest information
-    """
     try:
-        campaign_ops = QuestOperations(session)
-        quest = await campaign_ops.get_challenge_with_campaign(challenge_id)
+        quest_ops = QuestOperations(session)
 
-        if not quest:
+        daily = await quest_ops.get_daily_quest(
+            active_date=today,
+            guild_id=guild_id,
+        )
+
+        if not daily or not daily.quest or not daily.is_active:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Challenge not found"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active daily quest",
             )
 
-        campaign = quest.campaign
+        quest = daily.quest
+
         quest_data = {
-            "id": str(quest.id),
+            "id": str(daily.id),  # daily quest ID
             "title": quest.title,
-            "description": quest.description,
-            "order_position": quest.order_position,
-            "is_released": quest.is_released,
-            "is_announced": quest.is_announced,
-            "released_at": quest.released_at.isoformat() if quest.released_at else None,
-            "announced_at": (
-                quest.announced_at.isoformat() if quest.announced_at else None
-            ),
-            "created_at": quest.created_at.isoformat(),
-            "guild_id": campaign.guild_id,
-            "announcement_channels": campaign.announcement_channels,
-            "campaign": {
-                "id": str(campaign.id),
-                "title": campaign.title,
-                "start_time": campaign.start_time.isoformat(),
-                "release_cadence_hours": campaign.release_cadence_hours,
-                "is_active": campaign.is_active,
-            },
+            "prompt": quest.description,
+            "quest_type": quest.quest_type,
+            "points_value": quest.points_value,
+            "active_date": daily.active_date.isoformat(),
+            "expires_at": daily.expires_at.isoformat(),
+            "hint": "Once you're ready, submit with /daily submit",
         }
 
-        return {"challenge": quest_data}
+        return {"quest": quest_data}
 
     except DatabaseOperationError as e:
-        logger.error(f"Database error getting challenge: {e}")
+        logger.error(f"Database error getting daily quest: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve challenge",
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error getting challenge: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error",
-        )
+            detail="Failed to retrieve daily quest",
+        ) from e
