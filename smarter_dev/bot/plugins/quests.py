@@ -2,6 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 import logging
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from smarter_dev.bot.services.api_client import APIClient
 import hikari
@@ -16,14 +17,13 @@ plugin = lightbulb.Plugin("quests")
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+
 ## Abstractions
 async def defer_ephemeral(ctx):
     await ctx.respond(
         hikari.ResponseType.DEFERRED_MESSAGE_CREATE,
         flags=hikari.MessageFlag.EPHEMERAL,
     )
-
-async def get_guild_id()
 
 
 @plugin.command
@@ -33,8 +33,13 @@ async def quests_group() -> None:
     """Quests command group."""
     pass
 
-def initialize_client (settings: Settings, default_timeout = 30) :
-    return APIClient(base_url=settings.api_base_url, api_key=settings.bot_api_key, default_timeout=default_timeout)
+
+def initialize_client(settings: Settings, default_timeout=30):
+    return APIClient(
+        base_url=settings.api_base_url,
+        api_key=settings.bot_api_key,
+        default_timeout=default_timeout,
+    )
 
 
 @quests_group.child
@@ -49,11 +54,9 @@ async def event_command(ctx: lightbulb.Context) -> None:
             await ctx.edit_last_response("This command can only be used in a server.")
             return
 
-        initialize_client(settings)
+        api_client = initialize_client(settings)
 
-        response = await api_client.get(
-            f"/quests/daily/current?guild_id={guild_id}"
-        )
+        response = await api_client.get(f"/quests/daily/current?guild_id={guild_id}")
 
         data = response.json()
         quest = data["quest"]
@@ -80,9 +83,7 @@ async def event_command(ctx: lightbulb.Context) -> None:
             inline=True,
         )
 
-        embed.set_footer(
-            text="View progress with /daily progress"
-        )
+        embed.set_footer(text="View progress with /daily progress")
 
         await ctx.edit_last_response(embed=embed)
 
