@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -34,9 +34,11 @@ async def get_current_daily_quest(
     guild_id: str = Query(..., description="Discord guild ID"),
     session: AsyncSession = Depends(get_db_session),
     api_key=Depends(verify_api_key),
-) -> Dict[str, Dict[str, Any]]:
+) -> Dict[str, Optional[Dict[str, Any]]]:
     date_provider = get_date_provider()
     today = date_provider.today()
+
+    logger.info("Quests router hit")
 
     try:
         quest_ops = QuestOperations(session)
@@ -46,17 +48,15 @@ async def get_current_daily_quest(
             guild_id=guild_id,
         )
 
-        if not daily or not daily.quest or not daily.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No active daily quest",
-            )
+        logger.info("Awaited daily quest")
 
+        if not daily or not daily.quest or not daily.is_active:
+            return {"quest": None, "message": "No daily quest available yet"}
         quest_data = {
             "id": str(daily.id),  # daily quest ID
-            "title": quest.title,
-            "prompt": quest.prompt,
-            "quest_type": quest.quest_type,
+            "title": daily.quest.title,
+            "prompt": daily.quest.prompt,
+            "quest_type": daily.quest.quest_type,
             "active_date": daily.active_date.isoformat(),
             "expires_at": daily.expires_at.isoformat(),
             "hint": "Once you're ready, submit with /daily submit",
