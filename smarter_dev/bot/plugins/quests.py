@@ -1,5 +1,4 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status, Query
 import logging
 from typing import TYPE_CHECKING
 
@@ -8,8 +7,6 @@ import hikari
 import lightbulb
 import logging
 from smarter_dev.shared.config import Settings, get_settings
-
-router = APIRouter(prefix="/quests", tags=["quests"])
 
 plugin = lightbulb.Plugin("quests")
 
